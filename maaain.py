@@ -2,32 +2,31 @@ import asyncio
 import logging
 
 from bleak import discover
-from bleak import BleakClient, BleakGATTCharacteristic
+from bleak import BleakClient
 
 devices_dict = {}
 devices_list = []
 receive_data = []
 
-#To discover BLE devices nearby 
 async def scan():
+    """ Scan for BLE devices. """
+
     devices_dict.clear()
     devices_list.clear()
     
     dev = await discover()
     for i in range(0,len(dev)):
-        #Print the devices discovered
+        # Print the devices discovered
         print("[" + str(i) + "]" + dev[i].address,dev[i].name,dev[i].metadata["uuids"])
-        #Put devices information into list
+        # Put devices information into list
         devices_dict[dev[i].address] = []
         devices_dict[dev[i].address].append(dev[i].name)
         devices_dict[dev[i].address].append(dev[i].metadata["uuids"])
         devices_list.append(dev[i].address)
 
-#An easy notify function, just print the recieve data
-#def notification_handler(sender, data):
-def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
-    #print(', '.join('{:02x}'.format(x) for x in data))
-    print(f"{characteristic.description}: {data}")
+# An easy notify function, just print the received data
+def notification_handler(_, data: bytearray):
+    print(', '.join('{:02x}'.format(x) for x in data))
 
 async def run(address, debug=False):
     log = logging.getLogger(__name__)
@@ -43,7 +42,6 @@ async def run(address, debug=False):
         x = await client.is_connected()
         log.info("Connected: {0}".format(x))
 
-        #CHARACTERISTIC_UUID = "23782c92-139c-4846-aac5-31d1b078d440"
         CHARACTERISTIC_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
         characteristic = None
         for service in client.services:
@@ -53,28 +51,23 @@ async def run(address, debug=False):
                     characteristic = char
                     break
 
-        char_value = await client.read_gatt_char(char)
+        char_value = await client.read_gatt_char(characteristic)
         print(f"Value: {char_value}")
-        #Characteristic uuid
-        #CHARACTERISTIC_UUID = "put your characteristic uuid"
-        #if characteristic is None:
-        #    print("Characteristic not found!")
-        #    return
 
-        #await client.start_notify(characteristic.handle, notification_handler)
-        #await asyncio.sleep(5.0)
-        #await client.stop_notify(characteristic.handle)
+def do_scan() -> str:
+    """
+    Set up the event loop and run the scan.
+    After scan is done, asks user to select a device to connect and return its choice.
+    """
 
-
-def do_scan():
     print("Scanning for peripherals...")
 
-    #Build an event loop
+    # Build an event loop
     loop = asyncio.get_event_loop()
-    #Run the discover event
+    # Run the discover event
     loop.run_until_complete(scan())
 
-    #let user chose the device
+    # let user chose the device
     index = input('please select device from 0 to ' + str(len(devices_list)) + ":")
     
     return index
@@ -84,8 +77,10 @@ if __name__ == "__main__":
         index = do_scan()
 
         if (index == 'r'):
+            # retry scan
             continue
         elif (index == 'q'):
+            # quit scan
             break
 
         index = int(index)
