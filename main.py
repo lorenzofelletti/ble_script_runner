@@ -25,11 +25,11 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
     logger.debug(f"device trying to connect to {device}")
 
     async with BleakClient(device) as client:
-        #await client.connect()
         await client.start_notify(my_char_uuid, callback)
         await asyncio.sleep(10)
         await client.stop_notify(my_char_uuid)
         # send an "exit" message to the queue
+        await client.disconnect()
         await queue.put((time.time(), None))
 
 
@@ -74,11 +74,11 @@ async def app():
         # will stop immediately.
         await stop_event.wait()
 
-        if isinstance(device_to_connect_to, BLEDevice):
-            queue = asyncio.Queue()
-            client_task = run_ble_client(device_to_connect_to, queue)
-            consumer_task = run_queue_consumer(queue)
-            await asyncio.gather(client_task, consumer_task)
+    if isinstance(device_to_connect_to, BLEDevice):
+        queue = asyncio.Queue()
+        client_task = run_ble_client(device_to_connect_to, queue)
+        consumer_task = run_queue_consumer(queue)
+        await asyncio.gather(client_task, consumer_task)
     logger.info("done")
 
 if __name__ == "__main__":
