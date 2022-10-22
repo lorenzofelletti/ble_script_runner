@@ -1,93 +1,86 @@
-import asyncio
 import logging
+import os
+import subprocess
+import asyncio
+import time
+from typing import Optional
+from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
 
-from bleak import discover
-from bleak import BleakClient
 
-devices_dict = {}
-devices_list = []
-receive_data = []
+logger = logging.getLogger(__name__)
 
-async def scan():
-    """ Scan for BLE devices. """
+base_path = os.path.realpath(__file__)
+base_path = os.path.dirname(base_path)
 
-    devices_dict.clear()
-    devices_list.clear()
-    
-    dev = await discover()
-    for i in range(0,len(dev)):
-        # Print the devices discovered
-        print("[" + str(i) + "]" + dev[i].address,dev[i].name,dev[i].metadata["uuids"])
-        # Put devices information into list
-        devices_dict[dev[i].address] = []
-        devices_dict[dev[i].address].append(dev[i].name)
-        devices_dict[dev[i].address].append(dev[i].metadata["uuids"])
-        devices_list.append(dev[i].address)
+my_service_uuid = "0000ffe0-0000-1000-8000-00805f9b34fb"
+my_char_uuid = "0000ffe1-0000-1000-8000-00805f9b34fb"
+my_char_desc = "00002902-0000-1000-8000-00805f9b34fb"
 
-# An easy notify function, just print the received data
-def notification_handler(_, data: bytearray):
-    print(', '.join('{:02x}'.format(x) for x in data))
 
-async def run(address, debug=False):
-    log = logging.getLogger(__name__)
-    if debug:
-        import sys
+async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
+    async def callback(_, data: bytearray):
+        await queue.put((time.time(), data))
 
-        log.setLevel(logging.DEBUG)
-        h = logging.StreamHandler(sys.stdout)
-        h.setLevel(logging.DEBUG)
-        log.addHandler(h)
+    logger.debug(f"called {run_ble_client.__name__}")
+    logger.debug(f"device trying to connect to {device}")
 
-    async with BleakClient(address) as client:
-        x = await client.is_connected()
-        log.info("Connected: {0}".format(x))
+    async with BleakClient(device) as client:
+        #await client.connect()
+        await client.start_notify(my_char_uuid, callback)
+        await asyncio.sleep(10)
+        await client.stop_notify(my_char_uuid)
+        # send an "exit" message to the queue
+        await queue.put((time.time(), None))
 
-        CHARACTERISTIC_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
-        characteristic = None
-        for service in client.services:
-            for char in service.characteristics:
-                print(f"Characteristic: {char.uuid} ({char.description})")
-                if char.uuid == CHARACTERISTIC_UUID:
-                    characteristic = char
-                    break
 
-        char_value = await client.read_gatt_char(characteristic)
-        print(f"Value: {char_value}")
+async def run_queue_consumer(queue: asyncio.Queue):
+    logger.debug(f"called {run_queue_consumer.__name__}")
 
-def do_scan() -> str:
-    """
-    Set up the event loop and run the scan.
-    After scan is done, asks user to select a device to connect and return its choice.
-    """
+    def run_script(data: bytearray):
+        data = data.decode("utf-8")
+        logger.info(f"running script {data}")
+        try:
+            subprocess.run(f"./scripts/{data}")
+        except Exception as e:
+            logger.error(e)
 
-    print("Scanning for peripherals...")
+    while True:
+        epoch, data = await queue.get()
+        if data is None:
+            logger.info("received exit message")
+            break
+        logger.info(f"received data {data} at epoch {epoch}")
+        run_script(data)
 
-    # Build an event loop
-    loop = asyncio.get_event_loop()
-    # Run the discover event
-    loop.run_until_complete(scan())
 
-    # let user chose the device
-    index = input('please select device from 0 to ' + str(len(devices_list)) + ":")
-    
-    return index
+async def app():
+    logger.debug(f"called {app.__name__}")
+
+    device_to_connect_to: Optional[BLEDevice] = None
+    stop_event = asyncio.Event()
+
+    def callback(device: BLEDevice, advertising_data: AdvertisementData):
+        logger.info("found device {0}".format(device))
+
+        nonlocal device_to_connect_to
+        # TODO: do something with incoming data
+        if my_service_uuid in advertising_data.service_uuids:
+            logger.info(f"found device with service {my_service_uuid}")
+            device_to_connect_to = device
+            stop_event.set()  # awakens stop_event.wait()
+
+    async with BleakScanner(callback, service_uuids=[my_service_uuid]) as _:
+        # Important! Wait for an event to trigger stop, otherwise scanner
+        # will stop immediately.
+        await stop_event.wait()
+
+        if isinstance(device_to_connect_to, BLEDevice):
+            queue = asyncio.Queue()
+            client_task = run_ble_client(device_to_connect_to, queue)
+            consumer_task = run_queue_consumer(queue)
+            await asyncio.gather(client_task, consumer_task)
+    logger.info("done")
 
 if __name__ == "__main__":
-    while True:
-        index = do_scan()
-
-        if (index == 'r'):
-            # retry scan
-            continue
-        elif (index == 'q'):
-            # quit scan
-            break
-
-        index = int(index)
-        address = devices_list[index]
-        print("Address is " + address)
-
-        #Run notify event
-        loop = asyncio.get_event_loop()
-        loop.set_debug(True)
-        loop.run_until_complete(run(address, True))
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(app())
