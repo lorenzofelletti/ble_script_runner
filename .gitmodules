@@ -1,0 +1,3 @@
+[submodule "SimpleBleApp"]
+	path = SimpleBleApp
+	url = https://github.com/lorenzofelletti/SimpleBleApp
