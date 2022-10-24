@@ -1,6 +1,6 @@
 import logging
 import os
-from re import I
+import shlex
 import subprocess
 import asyncio
 from sys import argv
@@ -41,7 +41,7 @@ async def run_queue_consumer(queue: asyncio.Queue):
     logger.debug(f"called {run_queue_consumer.__name__}")
 
     def run_script(data: bytearray):
-        data: List[str] = data.decode("utf-8").split()
+        data: List[str] = shlex.split(data.decode("utf-8"))
         data[0] = './scripts/' + data[0]
         logger.info(f"running script {data}")
         try:
