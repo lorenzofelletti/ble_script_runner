@@ -1,11 +1,15 @@
 import logging
 import os
+from re import I
 import subprocess
 import asyncio
+from sys import argv
 import time
-from typing import Optional
+from typing import List, Optional
 from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
 
+# Time the notification of the ble characteristic is active
+NOTIFICATION_WINDOW_SIZE = 10  # seconds
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +30,7 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
 
     async with BleakClient(device) as client:
         await client.start_notify(my_char_uuid, callback)
-        await asyncio.sleep(10)
+        await asyncio.sleep(NOTIFICATION_WINDOW_SIZE)
         await client.stop_notify(my_char_uuid)
         # send an "exit" message to the queue
         await client.disconnect()
@@ -37,10 +41,11 @@ async def run_queue_consumer(queue: asyncio.Queue):
     logger.debug(f"called {run_queue_consumer.__name__}")
 
     def run_script(data: bytearray):
-        data = data.decode("utf-8")
+        data: List[str] = data.decode("utf-8").split()
+        data[0] = './scripts/' + data[0]
         logger.info(f"running script {data}")
         try:
-            subprocess.run(f"./scripts/{data}")
+            subprocess.run(data)
         except Exception as e:
             logger.error(e)
 
@@ -54,7 +59,7 @@ async def run_queue_consumer(queue: asyncio.Queue):
 
 
 async def app():
-    logger.debug(f"called {app.__name__}")
+    logger.info(f"scanning for devices")
 
     device_to_connect_to: Optional[BLEDevice] = None
     stop_event = asyncio.Event()
@@ -63,7 +68,7 @@ async def app():
         logger.info("found device {0}".format(device))
 
         nonlocal device_to_connect_to
-        # TODO: do something with incoming data
+
         if my_service_uuid in advertising_data.service_uuids:
             logger.info(f"found device with service {my_service_uuid}")
             device_to_connect_to = device
@@ -83,4 +88,11 @@ async def app():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+
+    # set the notification window size
+    if len(argv) > 1:
+        if argv[1].isdigit():
+            NOTIFICATION_WINDOW_SIZE = int(argv[1])
+    logger.info(f"notification window size set to {NOTIFICATION_WINDOW_SIZE}")
+
     asyncio.run(app())
