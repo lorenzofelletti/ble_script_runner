@@ -29,10 +29,12 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
     logger.debug(f"device trying to connect to {device}")
 
     async with BleakClient(device) as client:
-        await client.start_notify(my_char_uuid, callback)
+        await client.connect()
+        logger.debug(f"Connected to {device}")
+        print(f"Connected to {device}")
+        await client.start_notify(my_char_uuid, notification_callback)
         await asyncio.sleep(NOTIFICATION_WINDOW_SIZE)
-        await client.stop_notify(my_char_uuid)
-        # send an "exit" message to the queue
+        print(f"disconnecting from {device}")
         await client.disconnect()
         await queue.put((time.time(), None))
 
