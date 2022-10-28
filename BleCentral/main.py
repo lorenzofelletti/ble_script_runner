@@ -22,12 +22,23 @@ my_char_uuid = "0000ffe1-0000-1000-8000-00805f9b34fb"
 my_char_desc = "00002902-0000-1000-8000-00805f9b34fb"
 
 
+def device_has_service(advertising_data: AdvertisementData, service_uuid: str) -> bool:
+    '''
+    Checks if the device advertises the service with the given uuid
+    '''
+    return service_uuid in advertising_data.service_uuids
+
+
 async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
-    async def callback(_, data: bytearray):
+    '''
+    Connects to the device and reads the characteristic, then puts the data into the queue
+    '''
+    async def notification_callback(_, data: bytearray):
+        logger.debug(f"putting data:'{data}' in queue")
         await queue.put((time.time(), data))
 
-    logger.debug(f"called {run_ble_client.__name__}")
-    logger.debug(f"device trying to connect to {device}")
+    logger.debug(f"Attempting connection to {device}")
+    print(f"Attempting connection to {device}")
 
     async with BleakClient(device) as client:
         await client.connect()
@@ -41,11 +52,12 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
 
 
 async def run_queue_consumer(queue: asyncio.Queue):
-    logger.debug(f"called {run_queue_consumer.__name__}")
-
+    '''
+    Consumes the queue and invokes the script indicated by the queue data
+    '''
     def run_script(data: bytearray):
         data: List[str] = shlex.split(data.decode("utf-8"))
-        data[0] = './scripts/' + data[0]
+        data[0] = f'./scripts/{data[0]}'
         logger.info(f"running script {data}")
         try:
             subprocess.run(data)
@@ -54,30 +66,34 @@ async def run_queue_consumer(queue: asyncio.Queue):
 
     while True:
         epoch, data = await queue.get()
+        logger.info(
+            f"received data {data} at epoch {epoch}" if data is not None
+            else "received exit message")
         if data is None:
-            logger.info("received exit message")
             break
-        logger.info(f"received data {data} at epoch {epoch}")
         run_script(data)
 
 
 async def app():
+    '''
+    Scan for devices with a given service uuid, then connect to them and read the characteristic
+    on notification, then invoke the script indicated by the characteristic.
+    '''
     logger.info(f"scanning for devices")
 
     device_to_connect_to: Optional[BLEDevice] = None
     stop_event = asyncio.Event()
 
-    def callback(device: BLEDevice, advertising_data: AdvertisementData):
-        logger.info("found device {0}".format(device))
+    def scan_callback(device: BLEDevice, advertising_data: AdvertisementData):
+        logger.info(f"found device {device}")
 
         nonlocal device_to_connect_to
-
-        if my_service_uuid in advertising_data.service_uuids:
-            logger.info(f"found device with service {my_service_uuid}")
+        if device_has_service(advertising_data, my_service_uuid):
+            logger.info(f"with service {my_service_uuid}")
             device_to_connect_to = device
             stop_event.set()  # awakens stop_event.wait()
 
-    async with BleakScanner(callback, service_uuids=[my_service_uuid]) as _:
+    async with BleakScanner(scan_callback, service_uuids=[my_service_uuid]) as _:
         # Important! Wait for an event to trigger stop, otherwise scanner
         # will stop immediately.
         await stop_event.wait()
@@ -87,10 +103,15 @@ async def app():
         client_task = run_ble_client(device_to_connect_to, queue)
         consumer_task = run_queue_consumer(queue)
         await asyncio.gather(client_task, consumer_task)
-    logger.info("done")
+
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        filename=f"{base_path}/logs/main.log", level=logging.DEBUG)
+
+    logger.debug(f"Searched service uuid: {my_service_uuid}")
+    logger.debug(f"Searched characteristic uuid: {my_char_uuid}")
+    logger.debug(f"With characteristic descriptor uuid: {my_char_desc}")
 
     # set the notification window size
     if len(argv) > 1:
