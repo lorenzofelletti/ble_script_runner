@@ -10,6 +10,7 @@ from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
 
 # Time the notification of the ble characteristic is active
 NOTIFICATION_WINDOW_SIZE = 10  # seconds
+MAX_RUNNING_TIME = 60 * 60 * 8  # 8h in seconds
 
 logger = logging.getLogger(__name__)
 
@@ -97,4 +98,13 @@ if __name__ == "__main__":
             NOTIFICATION_WINDOW_SIZE = int(argv[1])
     logger.info(f"notification window size set to {NOTIFICATION_WINDOW_SIZE}")
 
-    asyncio.run(app())
+    start_time = time.time()
+    while True:
+        logger.info(f"starting app")
+        asyncio.run(app())
+        logger.info(f"app finished")
+
+        elapsed_time = time.time() - start_time
+        if elapsed_time > MAX_RUNNING_TIME:
+            logger.info("max running time reached, exiting")
+            break
