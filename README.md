@@ -4,8 +4,9 @@ This Python application acts as a BLE Central that connects to devices exposing 
 The role of the BLE peripheral is played by the Android application [BleSimpleApp](https://github.com/lorenzofelletti/SimpleBleApp). Through this app, the user can control which script to execute on the BLE Central by sending a notification to it.
 
 ## Install The Python Application
-To install the application, clone the repository, `cd` to the directory and run the following commands:
+To install the application, clone the repository, `cd` to the clone directory and run the following commands:
 ```Bash
+cd BleCentral/
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -13,7 +14,10 @@ pip install -r requirements.txt
 
 > Note: `pyobjc` is only required on macOS, on other platforms the dependecy can be removed from `requirements.txt`, but other dependencies may be required.
 
-## Run
+Now you are ready to run the Python application on your device.
+
+## Run The Python Application
+Inside the `BleCentral` directory, and with the virtual environment activated, run:
 ```Bash
 python main.py
 ```
