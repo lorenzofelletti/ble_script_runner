@@ -21,6 +21,10 @@ my_service_uuid = "0000ffe0-0000-1000-8000-00805f9b34fb"
 my_char_uuid = "0000ffe1-0000-1000-8000-00805f9b34fb"
 my_char_desc = "00002902-0000-1000-8000-00805f9b34fb"
 
+# variables to meter the connection latency
+devices_discovery_time: dict[BLEDevice, Optional[float]] = {}
+latencies: List[float] = []
+
 
 def device_has_service(advertising_data: AdvertisementData, service_uuid: str) -> bool:
     '''
@@ -42,7 +46,13 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
 
     async with BleakClient(device) as client:
         await client.connect()
-        logger.debug(f"Connected to {device}")
+        logger.info(f"Connected to {device}")
+        connection_time = time.time()
+        logger.debug(f"connection time: {connection_time}")
+        latencies.append(connection_time - devices_discovery_time[device])
+        logger.debug(f"latency: {latencies[-1]}")
+        devices_discovery_time.pop(device)
+
         print(f"Connected to {device}")
         await client.start_notify(my_char_uuid, notification_callback)
         await asyncio.sleep(NOTIFICATION_WINDOW_SIZE)
@@ -90,6 +100,11 @@ async def app():
         nonlocal device_to_connect_to
         if device_has_service(advertising_data, my_service_uuid):
             logger.info(f"with service {my_service_uuid}")
+            if devices_discovery_time.get(device) is None:
+                devices_discovery_time[device] = time.time()
+                logger.debug(
+                    f"discovery time: {devices_discovery_time[device]}")
+
             device_to_connect_to = device
             stop_event.set()  # awakens stop_event.wait()
 
@@ -103,6 +118,15 @@ async def app():
         client_task = run_ble_client(device_to_connect_to, queue)
         consumer_task = run_queue_consumer(queue)
         await asyncio.gather(client_task, consumer_task)
+
+
+def has_max_running_time_elapsed_builder(start_time: float, max_running_time: int) -> callable:
+    '''
+    Returns a function that checks if the max running time has elapsed
+    '''
+    def has_max_running_time_elapsed() -> bool:
+        return time.time() - start_time > max_running_time
+    return has_max_running_time_elapsed
 
 
 if __name__ == "__main__":
@@ -119,13 +143,16 @@ if __name__ == "__main__":
             NOTIFICATION_WINDOW_SIZE = int(argv[1])
     logger.info(f"notification window size set to {NOTIFICATION_WINDOW_SIZE}")
 
-    start_time = time.time()
+    has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
+        start_time=time.time(), max_running_time=MAX_RUNNING_TIME)
     while True:
         logger.info(f"starting app")
         asyncio.run(app())
         logger.info(f"app finished")
-
-        elapsed_time = time.time() - start_time
-        if elapsed_time > MAX_RUNNING_TIME:
-            logger.info("max running time reached, exiting")
+        if has_max_running_time_elapsed():
+            logger.info(f"max running time reached, exiting")
             break
+
+    mean_latency = sum(latencies) / len(latencies)
+    logger.debug(f"mean connection latency: {mean_latency}")
+    print(f"mean connection latency: {mean_latency}")
