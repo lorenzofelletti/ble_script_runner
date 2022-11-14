@@ -1,5 +1,6 @@
 import logging
 import os
+import argparse
 import shlex
 import subprocess
 import asyncio
@@ -8,18 +9,12 @@ import time
 from typing import List, Optional
 from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
 
-# Time the notification of the ble characteristic is active
-NOTIFICATION_WINDOW_SIZE = 10  # seconds
-MAX_RUNNING_TIME = 60 * 60 * 8  # 8h in seconds
+from config import APP_CONFIG as C
+from strings import strings as s
+
 
 logger = logging.getLogger(__name__)
 
-base_path = os.path.realpath(__file__)
-base_path = os.path.dirname(base_path)
-
-my_service_uuid = "0000ffe0-0000-1000-8000-00805f9b34fb"
-my_char_uuid = "0000ffe1-0000-1000-8000-00805f9b34fb"
-my_char_desc = "00002902-0000-1000-8000-00805f9b34fb"
 
 # variables to meter the connection latency
 devices_discovery_time: dict[BLEDevice, Optional[float]] = {}
@@ -54,8 +49,8 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
         devices_discovery_time.pop(device)
 
         print(f"Connected to {device}")
-        await client.start_notify(my_char_uuid, notification_callback)
-        await asyncio.sleep(NOTIFICATION_WINDOW_SIZE)
+        await client.start_notify(C.CHAR_UUID, notification_callback)
+        await asyncio.sleep(C.NOTIFICATION_WINDOW_SIZE)
         print(f"disconnecting from {device}")
         await client.disconnect()
         await queue.put((time.time(), None))
@@ -95,20 +90,24 @@ async def app():
     stop_event = asyncio.Event()
 
     def scan_callback(device: BLEDevice, advertising_data: AdvertisementData):
+        nonlocal device_to_connect_to
         logger.info(f"found device {device}")
 
-        nonlocal device_to_connect_to
-        if device_has_service(advertising_data, my_service_uuid):
-            logger.info(f"with service {my_service_uuid}")
-            if devices_discovery_time.get(device) is None:
-                devices_discovery_time[device] = time.time()
-                logger.debug(
-                    f"discovery time: {devices_discovery_time[device]}")
+        if not device_has_service(advertising_data, C.SERVICE_UUID):
+            logger.info(
+                f"device {device} does not have service {C.SERVICE_UUID}")
+            return
 
-            device_to_connect_to = device
-            stop_event.set()  # awakens stop_event.wait()
+        logger.info(f"device {device} has service {C.SERVICE_UUID}")
+        if devices_discovery_time.get(device) is None:
+            devices_discovery_time[device] = time.time()
+            logger.debug(
+                f"discovery time: {devices_discovery_time[device]}")
 
-    async with BleakScanner(scan_callback, service_uuids=[my_service_uuid]) as _:
+        device_to_connect_to = device
+        stop_event.set()  # awakens stop_event.wait()
+
+    async with BleakScanner(scan_callback, service_uuids=[C.SERVICE_UUID]) as _:
         # Important! Wait for an event to trigger stop, otherwise scanner
         # will stop immediately.
         await stop_event.wait()
@@ -130,21 +129,32 @@ def has_max_running_time_elapsed_builder(start_time: float, max_running_time: in
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        filename=f"{base_path}/logs/main.log", level=logging.DEBUG)
+    # Command line arguments parsing
+    parser = argparse.ArgumentParser(description=s.app_description)
+    parser.add_argument("--log-level", default="INFO", help=s.log_level_help)
+    parser.add_argument("--log-file", default=C.LOG_FILE, help=s.log_file_help)
+    parser.add_argument("--notification-window-size", default=C.NOTIFICATION_WINDOW_SIZE,
+                        type=int, help=s.notification_window_size_help)
+    parser.add_argument("--max-running-time", default=C.MAX_RUNNING_TIME,
+                        type=int, help=s.max_running_time_help)
 
-    logger.debug(f"Searched service uuid: {my_service_uuid}")
-    logger.debug(f"Searched characteristic uuid: {my_char_uuid}")
-    logger.debug(f"With characteristic descriptor uuid: {my_char_desc}")
+    args = parser.parse_args(argv[1:])
 
-    # set the notification window size
-    if len(argv) > 1:
-        if argv[1].isdigit():
-            NOTIFICATION_WINDOW_SIZE = int(argv[1])
-    logger.info(f"notification window size set to {NOTIFICATION_WINDOW_SIZE}")
+    # Configuration setup
+    C.LOG_LEVEL = args.log_level
+    C.LOG_FILE = args.log_file
+    C.NOTIFICATION_WINDOW_SIZE = args.notification_window_size
+    C.MAX_RUNNING_TIME = args.max_running_time
+
+    logging.basicConfig(filename=C.LOG_FILE, level=C.LOG_LEVEL)
+
+    logger.debug(f"Searched service uuid: {C.SERVICE_UUID}")
+    logger.debug(f"Searched characteristic uuid: {C.CHAR_UUID}")
+    logger.debug(f"With characteristic descriptor uuid: {C.CHAR_DESC_UUID}")
+    logger.info(f"notification window size set to {C.NOTIFICATION_WINDOW_SIZE}")
 
     has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
-        start_time=time.time(), max_running_time=MAX_RUNNING_TIME)
+        start_time=time.time(), max_running_time=C.MAX_RUNNING_TIME)
     while True:
         logger.info(f"starting app")
         asyncio.run(app())
