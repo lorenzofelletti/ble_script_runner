@@ -1,6 +1,6 @@
 async-timeout==4.0.2
 autopep8==1.7.0
-bleak==0.18.1
+bleak==0.19.0
 pycodestyle==2.9.1
 pyobjc==8.5.1
 pyobjc-core==8.5.1
