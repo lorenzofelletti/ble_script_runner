@@ -62,7 +62,7 @@ async def run_queue_consumer(queue: asyncio.Queue):
     '''
     def run_script(data: bytearray):
         data: List[str] = shlex.split(data.decode("utf-8"))
-        data[0] = f'./scripts/{data[0]}'
+        data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
         logger.info(f"running script {data}")
         try:
             subprocess.run(data)
