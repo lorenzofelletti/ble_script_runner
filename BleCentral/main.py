@@ -6,7 +6,7 @@ import subprocess
 import asyncio
 from sys import argv
 import time
-from typing import List, Optional
+from typing import Callable, List, Optional
 from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
 
 from config import APP_CONFIG as C
@@ -119,7 +119,7 @@ async def app():
         await asyncio.gather(client_task, consumer_task)
 
 
-def has_max_running_time_elapsed_builder(start_time: float, max_running_time: int) -> callable:
+def has_max_running_time_elapsed_builder(start_time: float, max_running_time: int) -> Callable[[], bool]:
     '''
     Returns a function that checks if the max running time has elapsed
     '''
@@ -151,18 +151,16 @@ if __name__ == "__main__":
     logger.debug(f"Searched service uuid: {C.SERVICE_UUID}")
     logger.debug(f"Searched characteristic uuid: {C.CHAR_UUID}")
     logger.debug(f"With characteristic descriptor uuid: {C.CHAR_DESC_UUID}")
-    logger.info(f"notification window size set to {C.NOTIFICATION_WINDOW_SIZE}")
+    logger.info(f"Notification window size set to {C.NOTIFICATION_WINDOW_SIZE}")
 
     has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
         start_time=time.time(), max_running_time=C.MAX_RUNNING_TIME)
-    while True:
+    while not has_max_running_time_elapsed():
         logger.info(f"starting app")
         asyncio.run(app())
         logger.info(f"app finished")
-        if has_max_running_time_elapsed():
-            logger.info(f"max running time reached, exiting")
-            break
 
+    logger.info(f"max running time elapsed")
     mean_latency = sum(latencies) / len(latencies)
     logger.debug(f"mean connection latency: {mean_latency}")
     print(f"mean connection latency: {mean_latency}")
