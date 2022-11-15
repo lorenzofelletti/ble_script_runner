@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 strings_dict = {
     'app_description': 'Bluetooth Low Energy client searching for devices with \
-        a given service uuid and executing a script indicated by the characteristic \
+        a given service uuid and executing scripts indicated by a specific characteristic \
         value on notification. If the script is not found, the client will ignore it.',
     'log_level_help': 'Provide logging level. Example: --log-level DEBUG, default: INFO',
     'log_file_help': 'Provide logging file. Example: --log-file /tmp/main.log',
