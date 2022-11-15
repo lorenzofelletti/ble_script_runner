@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 strings_dict = {
+    'app_name': 'BLE Script Runner',
     'app_description': 'Bluetooth Low Energy client searching for devices with \
         a given service uuid and executing scripts indicated by a specific characteristic \
         value on notification. If the script is not found, the client will ignore it.',
@@ -10,6 +11,7 @@ strings_dict = {
         Example: --notification-window-size 20. Default: 10',
     'max_running_time_help': 'Provide max running time (in seconds), i.e. the time after\
         which the client will exit. Example: --max-running-time 60. Default: 8h (28800s)',
+    'follow_log_help': 'Follow the log file. Example: --follow-log-file',
 }
 
 strings = SimpleNamespace(**strings_dict)

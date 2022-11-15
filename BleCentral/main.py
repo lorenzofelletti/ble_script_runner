@@ -137,6 +137,8 @@ if __name__ == "__main__":
                         type=int, help=s.notification_window_size_help)
     parser.add_argument("--max-running-time", default=C.MAX_RUNNING_TIME,
                         type=int, help=s.max_running_time_help)
+    parser.add_argument("--follow-log", "-f",
+                        action="store_true", help=s.follow_log_help)
 
     args = parser.parse_args(argv[1:])
 
@@ -148,19 +150,33 @@ if __name__ == "__main__":
 
     logging.basicConfig(filename=C.LOG_FILE, level=C.LOG_LEVEL)
 
-    logger.debug(f"Searched service uuid: {C.SERVICE_UUID}")
-    logger.debug(f"Searched characteristic uuid: {C.CHAR_UUID}")
-    logger.debug(f"With characteristic descriptor uuid: {C.CHAR_DESC_UUID}")
-    logger.info(f"Notification window size set to {C.NOTIFICATION_WINDOW_SIZE}")
+    logger.info(f"--- STARTING: {s.app_name} ---")
+    logger.info(f"Searched service uuid: {C.SERVICE_UUID}")
+    logger.info(f"Searched characteristic uuid: {C.CHAR_UUID}")
+    logger.info(f"With characteristic descriptor uuid: {C.CHAR_DESC_UUID}")
+    logger.info(
+        f"Notification window size set to {C.NOTIFICATION_WINDOW_SIZE}")
 
-    has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
-        start_time=time.time(), max_running_time=C.MAX_RUNNING_TIME)
-    while not has_max_running_time_elapsed():
-        logger.info(f"starting app")
-        asyncio.run(app())
-        logger.info(f"app finished")
+    # Run the app
+    try:
+        if args.follow_log:  # Follows the log file if requested
+            log_follow_process = subprocess.Popen(["tail", "-f", C.LOG_FILE])
 
-    logger.info(f"max running time elapsed")
-    mean_latency = sum(latencies) / len(latencies)
-    logger.debug(f"mean connection latency: {mean_latency}")
-    print(f"mean connection latency: {mean_latency}")
+        has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
+            start_time=time.time(), max_running_time=C.MAX_RUNNING_TIME)
+        while not has_max_running_time_elapsed():
+            logger.info(f"starting app")
+            asyncio.run(app())
+            logger.info(f"app finished")
+    except KeyboardInterrupt:
+        logger.info(f"KeyboardInterrupt")
+    finally:
+        if args.follow_log:
+            log_follow_process.kill()
+        if has_max_running_time_elapsed():
+            logger.info(f"max running time elapsed")
+        if len(latencies) > 0:
+            mean_latency = sum(latencies) / len(latencies)
+            logger.debug(f"mean connection latency: {mean_latency}")
+            print(f"mean connection latency: {mean_latency}")
+        logger.info(f"--- FINISHED: {s.app_name} ---")
