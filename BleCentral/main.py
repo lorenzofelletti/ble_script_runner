@@ -32,14 +32,33 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
     '''
     Connects to the device and reads the characteristic, then puts the data into the queue
     '''
+    disconnection_event = asyncio.Event()  # set by the disconnect callback
+
+    def disconnection_callback(_):
+        logger.debug(
+            "disconnection callback called. setting disconnection event")
+        nonlocal disconnection_event
+        disconnection_event.set()
+
     async def notification_callback(_, data: bytearray):
         logger.debug(f"putting data:'{data}' in queue")
         await queue.put((time.time(), data))
 
+    async def disconnection_handler(client: Optional[BleakClient]):
+        '''
+        Disconnects from the device and waits for the disconnection event.
+        Pass client=None when the client is already disconnected (e.g. after timeout).
+        '''
+        if client is not None:
+            await client.disconnect()
+        logger.info(f"Disconnected from {device}")
+        print(f"disconnected from {device}")
+        await queue.put((time.time(), None))
+
     logger.debug(f"Attempting connection to {device}")
     print(f"Attempting connection to {device}")
 
-    async with BleakClient(device) as client:
+    async with BleakClient(device, disconnected_callback=disconnection_callback) as client:
         await client.connect()
         logger.info(f"Connected to {device}")
         connection_time = time.time()
@@ -50,10 +69,13 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
 
         print(f"Connected to {device}")
         await client.start_notify(C.CHAR_UUID, notification_callback)
-        await asyncio.sleep(C.NOTIFICATION_WINDOW_SIZE)
-        print(f"disconnecting from {device}")
-        await client.disconnect()
-        await queue.put((time.time(), None))
+
+        try:
+            await asyncio.wait_for(disconnection_event.wait(), C.NOTIFICATION_WINDOW_SIZE)
+        except asyncio.TimeoutError:
+            logger.info("timeout error. disconnecting")
+        finally:
+            await disconnection_handler(None if disconnection_event.is_set() else client)
 
 
 async def run_queue_consumer(queue: asyncio.Queue):
