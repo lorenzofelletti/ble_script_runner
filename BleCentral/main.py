@@ -89,25 +89,42 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
         await disconnection_handler(None)
 
 
+def run_script(data: bytearray) -> int:
+    '''
+    Runs the script indicated by the data. Returns the exit code.
+    '''
+    data: List[str] = shlex.split(data.decode("utf-8"))
+    data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
+    logger.info(f"running script {data}")
+    try:
+        process = subprocess.run(data)
+        return process.returncode
+    except Exception as e:
+        logger.error(e)
+        return 255
+
+
+async def try_to_read_char(client, uuid):
+    try:
+        if client is not None:
+            await client.read_gatt_char(uuid)
+    except Exception as e:
+        logger.error(e)
+
+
+async def try_to_write_char(client, uuid, data):
+    try:
+        if client is not None:
+            await client.write_gatt_char(uuid, data, True)
+    except Exception as e:
+        logger.error(e)
+
+
 async def run_queue_consumer(queue: asyncio.Queue):
     '''
     Consumes the queue and invokes the script indicated by the queue data.
     The queue data is a tuple of (timestamp, data, client)
     '''
-    def run_script(data: bytearray) -> int:
-        '''
-        Runs the script indicated by the data. Returns the exit code.
-        '''
-        data: List[str] = shlex.split(data.decode("utf-8"))
-        data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
-        logger.info(f"running script {data}")
-        try:
-            process = subprocess.run(data)
-            return process.returncode
-        except Exception as e:
-            logger.error(e)
-            return 255
-
     while True:
         epoch, data, client = await queue.get()
         logger.info(
@@ -115,13 +132,11 @@ async def run_queue_consumer(queue: asyncio.Queue):
             else "received exit message")
         if data is None:
             break
-        if client is not None and client.is_connected():
-            await client.read_gatt_char(C.CHAR_MONITORING_UUID, )
+        await try_to_read_char(client, C.CHAR_MONITORING_UUID)
         res = run_script(data)
-        if client is not None and client.is_connected():
-            print(f"script exit code: {res}")
-            logger.info(f"script exit code: {res}")
-            await client.write_gatt_char(C.CHAR_MONITORING_UUID, bytearray(str(res % 256).encode("utf-8")), True)
+        print(f"script exit code: {res}")
+        logger.info(f"script exit code: {res}")
+        await try_to_write_char(client, C.CHAR_MONITORING_UUID, bytearray(str(res % 256).encode("utf-8")))
 
 
 async def app():
