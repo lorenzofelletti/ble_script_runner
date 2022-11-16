@@ -7,7 +7,7 @@ import asyncio
 from sys import argv
 import time
 from typing import Callable, List, Optional
-from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner
+from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner, BleakError
 
 from config import APP_CONFIG as C
 from strings import strings as s
@@ -40,10 +40,6 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
         nonlocal disconnection_event
         disconnection_event.set()
 
-    async def notification_callback(_, data: bytearray):
-        logger.debug(f"putting data:'{data}' in queue")
-        await queue.put((time.time(), data))
-
     async def disconnection_handler(client: Optional[BleakClient]):
         '''
         Disconnects from the device and waits for the disconnection event.
@@ -53,52 +49,75 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
             await client.disconnect()
         logger.info(f"Disconnected from {device}")
         print(f"disconnected from {device}")
-        await queue.put((time.time(), None))
+        await queue.put((time.time(), None, None))
 
     logger.debug(f"Attempting connection to {device}")
     print(f"Attempting connection to {device}")
 
-    async with BleakClient(device, disconnected_callback=disconnection_callback) as client:
-        await client.connect()
-        logger.info(f"Connected to {device}")
-        connection_time = time.time()
-        logger.debug(f"connection time: {connection_time}")
-        latencies.append(connection_time - devices_discovery_time[device])
-        logger.debug(f"latency: {latencies[-1]}")
-        devices_discovery_time.pop(device)
+    try:
+        async with BleakClient(device, disconnected_callback=disconnection_callback) as client:
+            async def notification_callback(_, data: bytearray):
+                nonlocal client
+                logger.debug(f"putting data:'{data}' in queue")
+                await queue.put((time.time(), data, client))
 
-        print(f"Connected to {device}")
-        await client.start_notify(C.CHAR_UUID, notification_callback)
+            await client.connect()
+            logger.info(f"Connected to {device}")
+            connection_time = time.time()
+            logger.debug(f"connection time: {connection_time}")
+            latencies.append(connection_time - devices_discovery_time[device])
+            logger.debug(f"latency: {latencies[-1]}")
+            devices_discovery_time.pop(device)
 
-        try:
-            await asyncio.wait_for(disconnection_event.wait(), C.NOTIFICATION_WINDOW_SIZE)
-        except asyncio.TimeoutError:
-            logger.info("timeout error. disconnecting")
-        finally:
-            await disconnection_handler(None if disconnection_event.is_set() else client)
-
+            print(f"Connected to {device}")
+            await client.start_notify(C.CHAR_UUID, notification_callback)
+            try:
+                await asyncio.wait_for(disconnection_event.wait(), C.NOTIFICATION_WINDOW_SIZE)
+            except asyncio.TimeoutError:
+                logger.info("timeout error. disconnecting")
+            except BleakError as e:
+                logger.error("bleak error. disconnecting")
+                logger.error(e)
+                disconnection_event.set()
+            finally:
+                await disconnection_handler(None if disconnection_event.is_set() else client)
+    except Exception as e:
+        logger.error(e)
+        await disconnection_handler(None)
 
 async def run_queue_consumer(queue: asyncio.Queue):
     '''
-    Consumes the queue and invokes the script indicated by the queue data
+    Consumes the queue and invokes the script indicated by the queue data.
+    The queue data is a tuple of (timestamp, data, client)
     '''
-    def run_script(data: bytearray):
+    def run_script(data: bytearray) -> int:
+        '''
+        Runs the script indicated by the data. Returns the exit code.
+        '''
         data: List[str] = shlex.split(data.decode("utf-8"))
         data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
         logger.info(f"running script {data}")
         try:
-            subprocess.run(data)
+            process = subprocess.run(data)
+            return process.returncode
         except Exception as e:
             logger.error(e)
+            return 255
 
     while True:
-        epoch, data = await queue.get()
+        epoch, data, client = await queue.get()
         logger.info(
             f"received data {data} at epoch {epoch}" if data is not None
             else "received exit message")
         if data is None:
             break
-        run_script(data)
+        if client is not None and client.is_connected():
+            await client.read_gatt_char(C.CHAR_MONITORING_UUID, )
+        res = run_script(data)
+        if client is not None and client.is_connected():
+            print(f"script exit code: {res}")
+            logger.info(f"script exit code: {res}")
+            await client.write_gatt_char(C.CHAR_MONITORING_UUID, bytearray(str(res % 256).encode("utf-8")), True)
 
 
 async def app():
@@ -192,6 +211,11 @@ if __name__ == "__main__":
             logger.info(f"app finished")
     except KeyboardInterrupt:
         logger.info(f"KeyboardInterrupt")
+    except Exception as e:
+        logger.error(e)
+        tasks = asyncio.all_tasks()
+        for task in tasks:
+            task.cancel()
     finally:
         if args.follow_log:
             log_follow_process.kill()
