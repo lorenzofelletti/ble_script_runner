@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 # variables to meter the connection latency
+scanning_start_time: float
 devices_discovery_time: dict[BLEDevice, Optional[float]] = {}
-latencies: List[float] = []
+discovery_latencies: List[float] = []
+connection_latencies: List[float] = []
 
 
 def device_has_service(advertising_data: AdvertisementData, service_uuid: str) -> bool:
@@ -65,8 +67,9 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
             logger.info(f"Connected to {device}")
             connection_time = time.time()
             logger.debug(f"connection time: {connection_time}")
-            latencies.append(connection_time - devices_discovery_time[device])
-            logger.debug(f"latency: {latencies[-1]}")
+            connection_latencies.append(
+                connection_time - devices_discovery_time[device])
+            logger.debug(f"connection latency: {connection_latencies[-1]}")
             devices_discovery_time.pop(device)
 
             print(f"Connected to {device}")
@@ -84,6 +87,7 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
     except Exception as e:
         logger.error(e)
         await disconnection_handler(None)
+
 
 async def run_queue_consumer(queue: asyncio.Queue):
     '''
@@ -144,11 +148,14 @@ async def app():
             devices_discovery_time[device] = time.time()
             logger.debug(
                 f"discovery time: {devices_discovery_time[device]}")
-
+            discovery_latencies.append(
+                devices_discovery_time[device] - scanning_start_time)
+            logger.debug(f"discovery latency: {discovery_latencies[-1]}")
         device_to_connect_to = device
         stop_event.set()  # awakens stop_event.wait()
 
     async with BleakScanner(scan_callback, service_uuids=[C.SERVICE_UUID]) as _:
+        scanning_start_time = time.time()
         # Important! Wait for an event to trigger stop, otherwise scanner
         # will stop immediately.
         await stop_event.wait()
@@ -221,8 +228,14 @@ if __name__ == "__main__":
             log_follow_process.kill()
         if has_max_running_time_elapsed():
             logger.info(f"max running time elapsed")
-        if len(latencies) > 0:
-            mean_latency = sum(latencies) / len(latencies)
-            logger.debug(f"mean connection latency: {mean_latency}")
-            print(f"mean connection latency: {mean_latency}")
+        if len(discovery_latencies) > 0:
+            mean_discovery_latency = sum(
+                discovery_latencies) / len(discovery_latencies)
+            logger.debug(f"mean discovery latency: {mean_discovery_latency}")
+            print(f"mean discovery latency: {mean_discovery_latency}")
+        if len(connection_latencies) > 0:
+            mean_connection_latency = sum(
+                connection_latencies) / len(connection_latencies)
+            logger.debug(f"mean connection latency: {mean_connection_latency}")
+            print(f"mean connection latency: {mean_connection_latency}")
         logger.info(f"--- FINISHED: {s.app_name} ---")
