@@ -211,7 +211,7 @@ if __name__ == "__main__":
     C.NOTIFICATION_WINDOW_SIZE = args.notification_window_size
     C.MAX_RUNNING_TIME = args.max_running_time
 
-    logging.basicConfig(filename=C.LOG_FILE, level=C.LOG_LEVEL)
+    logging.basicConfig(filename=C.LOG_FILE, level=C.LOG_LEVEL.upper())
 
     logger.info(f"--- STARTING: {s.app_name} ---")
     logger.info(f"Searched service uuid: {C.SERVICE_UUID}")
