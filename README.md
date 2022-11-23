@@ -1,23 +1,10 @@
 # Ble Script Runner
-This Python application acts as a BLE Central that connects to devices exposing the UUID `0000ffe0-0000-1000-8000-00805f9b34fb` and exposing the characteristic `0000ffe1-0000-1000-8000-00805f9b34fb`. It then subscribes to notifications from the characteristic and, on receiving a notification, executes the script contained in the notification.
+This repository contains the code to implement a Bluetooth LE Central and Peripheral that communicate with each other to execute scripts on the Central.
 
-The role of the BLE peripheral is played by the Android application [BleSimpleApp](https://github.com/lorenzofelletti/SimpleBleApp). Through this app, the user can control which script to execute on the BLE Central by sending a notification to it.
+The BLE Central is a Python application that connects to peripheral devices exposing the service UUID `0000ffe0-0000-1000-8000-00805f9b34fb`. Such devices are expected to expose the characteristics `0000ffe1-0000-1000-8000-00805f9b34fb`, and `0000ffe2-0000-1000-8000-00805f9b34fb`. The application subscribes to notifications from the former and, on receiving a notification, executes the script contained in the notification. The latter is used to send the result of the script execution back to the BLE peripheral device.
 
-## Install The Python Application
-To install the application, clone the repository, `cd` to the clone directory and run the following commands:
-```Bash
-cd BleCentral/
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+The BLE Peripheral consists of an Android application that exposes the service and characteristics described above. Through this app, the user can control which script to execute on the BLE Central by sending a notification to it.
 
-> Note: `pyobjc` is only required on macOS, on other platforms the dependecy can be removed from `requirements.txt`, but other dependencies may be required.
+This repository is the result of the work done as Project Work in the course of Mobile Systems at the University of Bologna, during the academic year 2021/2022.
 
-Now you are ready to run the Python application on your device.
-
-## Run The Python Application
-Inside the `BleCentral` directory, and with the virtual environment activated, run:
-```Bash
-python main.py
-```
+A detailed description of the project can be found in the [project report](Project_Work_In_Mobile_Systems.pdf).
