@@ -9,8 +9,8 @@ import time
 from typing import Callable, List, Optional
 from bleak import AdvertisementData, BLEDevice, BleakClient, BleakScanner, BleakError
 
-from config import APP_CONFIG as C
-from strings import strings as s
+from config import APP_CONFIG as C, scripts_extensions as extensions
+from strings import strings as S
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,6 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
                 logger.debug(f"putting data:'{data}' in queue")
                 await queue.put((time.time(), data, client))
 
-            await client.connect()
             logger.info(f"Connected to {device}")
             connection_time = time.time()
             logger.debug(f"connection time: {connection_time}")
@@ -89,16 +88,29 @@ async def run_ble_client(device: BLEDevice, queue: asyncio.Queue):
         await disconnection_handler(None)
 
 
+def prepare_data_for_execution(data: bytearray) -> List[str]:
+    '''
+    Prepares the data for execution by the (platform-dependent) shell.
+    '''
+    data = shlex.split(data.decode("utf-8"))
+    data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
+    # splitting extension from script, replacing it with the correct one
+    script, _ = os.path.splitext(data[0])
+    data[0] = script + extensions[C.PLATFORM]
+    if C.PLATFORM == "Windows":
+        # windows needs some extra arguments to run the script
+        data = ["powershell.exe", "-ExecutionPolicy", "Unrestricted", "-File"] + data
+    return data
+
 def run_script(data: bytearray) -> int:
     '''
     Runs the script indicated by the data. Returns the exit code.
     '''
-    data: List[str] = shlex.split(data.decode("utf-8"))
-    data[0] = os.path.join(C.SCRIPT_DIR_PATH, data[0])
+    data: List[str] = prepare_data_for_execution(data)
     logger.info(f"running script {data}")
     try:
-        process = subprocess.run(data)
-        return process.returncode
+        return subprocess.run(data, shell=True).returncode if C.PLATFORM == "Windows" \
+            else subprocess.run(data).returncode
     except Exception as e:
         logger.error(e)
         return 255
@@ -193,15 +205,15 @@ def has_max_running_time_elapsed_builder(start_time: float, max_running_time: in
 
 if __name__ == "__main__":
     # Command line arguments parsing
-    parser = argparse.ArgumentParser(description=s.app_description)
-    parser.add_argument("--log-level", default="INFO", help=s.log_level_help)
-    parser.add_argument("--log-file", default=C.LOG_FILE, help=s.log_file_help)
+    parser = argparse.ArgumentParser(description=S.app_description)
+    parser.add_argument("--log-level", default="INFO", help=S.log_level_help)
+    parser.add_argument("--log-file", default=C.LOG_FILE, help=S.log_file_help)
     parser.add_argument("--notification-window-size", default=C.NOTIFICATION_WINDOW_SIZE,
-                        type=int, help=s.notification_window_size_help)
+                        type=int, help=S.notification_window_size_help)
     parser.add_argument("--max-running-time", default=C.MAX_RUNNING_TIME,
-                        type=int, help=s.max_running_time_help)
+                        type=int, help=S.max_running_time_help)
     parser.add_argument("--follow-log", "-f",
-                        action="store_true", help=s.follow_log_help)
+                        action="store_true", help=S.follow_log_help)
 
     args = parser.parse_args(argv[1:])
 
@@ -213,7 +225,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(filename=C.LOG_FILE, level=C.LOG_LEVEL.upper())
 
-    logger.info(f"--- STARTING: {s.app_name} ---")
+    logger.info(f"--- STARTING: {S.app_name} ---")
     logger.info(f"Searched service uuid: {C.SERVICE_UUID}")
     logger.info(f"Searched characteristic uuid: {C.CHAR_UUID}")
     logger.info(f"With characteristic descriptor uuid: {C.CHAR_DESC_UUID}")
@@ -223,7 +235,12 @@ if __name__ == "__main__":
     # Run the app
     try:
         if args.follow_log:  # Follows the log file if requested
-            log_follow_process = subprocess.Popen(["tail", "-f", C.LOG_FILE])
+            if C.PLATFORM == "Windows":
+                log_follow_process = subprocess.Popen(
+                    ["powershell", "Get-Content", C.LOG_FILE, "-Wait", "-Tail", "10"])
+            else:
+                log_follow_process = subprocess.Popen(
+                    ["tail", "-f", C.LOG_FILE])
 
         has_max_running_time_elapsed = has_max_running_time_elapsed_builder(
             start_time=time.time(), max_running_time=C.MAX_RUNNING_TIME)
@@ -235,8 +252,7 @@ if __name__ == "__main__":
         logger.info(f"KeyboardInterrupt")
     except Exception as e:
         logger.error(e)
-        tasks = asyncio.all_tasks()
-        for task in tasks:
+        for task in asyncio.all_tasks():
             task.cancel()
     finally:
         if args.follow_log:
@@ -253,4 +269,4 @@ if __name__ == "__main__":
                 connection_latencies) / len(connection_latencies)
             logger.debug(f"mean connection latency: {mean_connection_latency}")
             print(f"mean connection latency: {mean_connection_latency}")
-        logger.info(f"--- FINISHED: {s.app_name} ---")
+        logger.info(f"--- FINISHED: {S.app_name} ---")

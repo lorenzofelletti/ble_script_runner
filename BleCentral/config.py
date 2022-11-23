@@ -1,4 +1,5 @@
 import os
+import platform
 from types import SimpleNamespace
 
 
@@ -8,8 +9,14 @@ base_path = os.path.dirname(base_path)
 default_log_file = os.path.join(base_path, "main.log")
 default_script_dir_path = os.path.join(base_path, "scripts")
 
-# Time the notification of the ble characteristic is active
-APP_CONFIG_DICT = {
+scripts_extensions = {
+    'Windows': '.ps1',
+    'Linux': '.sh',
+    'Darwin': '.sh',
+}
+
+app_config_dict = {
+    'PLATFORM': platform.system(),
     'NOTIFICATION_WINDOW_SIZE': 10,  # seconds
     'MAX_RUNNING_TIME': 60 * 60 * 8,  # 8h
     'LOG_LEVEL': 'INFO',
@@ -21,4 +28,4 @@ APP_CONFIG_DICT = {
     'CHAR_MONITORING_UUID': "0000ffe2-0000-1000-8000-00805f9b34fb",
 }
 
-APP_CONFIG = SimpleNamespace(**APP_CONFIG_DICT)
+APP_CONFIG = SimpleNamespace(**app_config_dict)
