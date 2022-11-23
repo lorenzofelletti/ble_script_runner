@@ -7,4 +7,4 @@ The BLE Peripheral consists of an Android application that exposes the service a
 
 This repository is the result of the work done as Project Work in the course of Mobile Systems at the University of Bologna, during the academic year 2021/2022.
 
-A detailed description of the project can be found in the [project report](Project_Work_In_Mobile_Systems.pdf).
+A detailed description of the project can be found in the [project report](Project_Work_in_Mobile_Systems.pdf).
