@@ -1,4 +1,4 @@
-# Ble Script Runner
+# Ble Central
 This Python application acts as a BLE Central that connects to peripheral devices exposing the service UUID `0000ffe0-0000-1000-8000-00805f9b34fb`.
 Such devices are expected to expose the characteristics `0000ffe1-0000-1000-8000-00805f9b34fb`, and `0000ffe2-0000-1000-8000-00805f9b34fb`. The application subscribes to notifications from the former and, on receiving a notification, executes the script contained in the notification. The latter is used to send the result of the script execution back to the BLE peripheral device.
 
