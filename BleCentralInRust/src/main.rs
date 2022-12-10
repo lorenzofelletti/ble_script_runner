@@ -52,26 +52,6 @@ fn search_characteristics_with_uuid(
     filtered_characteristics
 }
 
-fn get_characteristic_with_uuid(
-    characteristics: &BTreeSet<Characteristic>,
-    uuid: Uuid,
-) -> Option<Characteristic> {
-    for characteristic in characteristics.iter() {
-        if characteristic.uuid == uuid {
-            return Some(characteristic.clone());
-        }
-    }
-    None
-}
-
-fn get_status_characteristic(characteristics: &BTreeSet<Characteristic>) -> Option<Characteristic> {
-    get_characteristic_with_uuid(characteristics, STATUS_CHARACTERISTIC_UUID)
-}
-
-fn get_script_characteristic(characteristics: &BTreeSet<Characteristic>) -> Option<Characteristic> {
-    get_characteristic_with_uuid(characteristics, SCRIPT_CHARACTERISTIC_UUID)
-}
-
 /**
  * Takes the data from the notification and return the script to execute.
  */
