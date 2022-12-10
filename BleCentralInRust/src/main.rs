@@ -85,10 +85,18 @@ fn run_script(script: &String) -> i32 {
         let args = &parsed_script_and_args[1..];
 
         // Running command
-        let output = std::process::Command::new(&command_name)
+        let output = if cfg!(target_os = "windows") {
+            std::process::Command::new("powershell.exe")
+                .args(&["/C", &command_name])
+                .args(args)
+                .output()
+                .expect("failed to execute process")
+        } else {
+            std::process::Command::new(&command_name)
             .args(args)
             .output()
-            .expect("failed to execute process");
+            .expect("failed to execute process")
+        };
 
         // Returning output
         output
